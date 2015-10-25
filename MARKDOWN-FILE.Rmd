@@ -1,0 +1,114 @@
+---
+title: "Machine Learning: Course Project"
+author: "by 08costan"
+output: html_document
+---
+
+This HTML report has been made with R markdown. This is my personal submission for Coursera's "Practical Machine Learning" course project.
+
+# Summary
+This is a very simple report for the machine learning course project.
+This work is based on the training dataset available here: http://groupware.les.inf.puc-rio.br/har
+
+The goal is to analyse the dataset (data from accelerometers when several subjects are asked to perform physical activities, correctly or incorrectly in 5 different ways), then fit a prediction model on this data.
+
+I explain here the following:
+
+- How I pre-processed the data
+- What prediction algorithm I selected (random forest)
+- How I performed cross-validation (data slicing) and estimated an out of sample error rate.
+
+This approach remains very simplistic, and we could of course discuss a "better" approach (i.e. fine-tuning the model).
+
+# Data loading and pre-processing
+
+We first start by loading the training dataset.
+
+```{r cache=TRUE}
+training<-read.csv2("pml-training.csv",sep=",")
+ncol(training)
+```
+
+We learn that there are 160 variables (incl. the outcome "classe"). This constitues a lot of possible explanatory variables, so we will first check and exclude missing data (such as NAs, NULL, "" or DIV/0!) to reduce the number of predictors to use.
+
+```{r}
+cutout<-lapply(training,function(x){sum(is.na(x))})
+cutout<-ifelse(cutout>0,FALSE,TRUE)
+subsetTrain<-training[,cutout]
+
+cutout<-lapply(subsetTrain,function(x){sum(x=="")})
+cutout<-ifelse(cutout>0,FALSE,TRUE)
+subsetTrain<-subsetTrain[,cutout]
+ncol(subsetTrain)
+```
+
+We have reduced the number of possible predictors from 159 to 59. That will be easier to handle when fitting a model. By having a closer look at the data, we notice that the first 7 columns of the dataset are purely descriptive (including the subject name and timestamps):
+
+```{r}
+head(colnames(subsetTrain),n=10)
+```
+
+I decided to exclude the first 7 columns in order to build a model by using only data from accelerometers, thus excluding data on the participant (time, name...).
+
+I also convert all remaining variables (except outcome "classe") as numeric variables, because it is supposed to be continuous data from accelerometers and not factor variables.
+
+```{r}
+subsetTrain<-subsetTrain[,8:60]
+
+#Converting all variables to numeric
+for(i in 1:(ncol(subsetTrain)-1)){
+    subsetTrain[,i]<-as.numeric(subsetTrain[,i])
+}
+
+ncol(subsetTrain)
+```
+
+We will keep this final dataset, with 52 predictors and 1 column for the outcome.
+
+# Model fitting
+
+The goal is to correctly identify a physical activity based on the data from several accelerometers. This happens to be a classification problem. We will use a random forest algorithm to have a systematic approach to selecting the best classification tree.
+
+I used the randomForest package to fit the model, rather than the caret package, for shorter computing time. I also load the caret package to use some of its processing functions.
+
+```{r results='hide'}
+library(caret)
+library(randomForest)
+```
+
+We will first separate the training dataset into two smaller datasets (one for training and one for testing). This will enable us to compute an out of sample error for our model.
+
+```{r}
+# Data slicing
+set.seed(1234)
+inTrain<-createDataPartition(y=subsetTrain$classe,p=0.75,list=FALSE)
+sbTrain<-subsetTrain[inTrain,]
+sbTest<-subsetTrain[-inTrain,]
+```
+
+We now fit the random forest model for the outcome "classe" by using 52 predictors (i.e. all the other columns from our training dataset).
+```{r cache=TRUE}
+fit<-randomForest(classe~.,data=sbTrain)
+```
+
+# Cross-validation
+
+We built a model by subsetting randomly 75% of the training data we had. We can plot a confusion matrix to get an estimate of the "accuracy" of our model on the training data.
+We can do the same process on the remaining 25% we kept for testing. When computing the "accuracy" of our predictions, we expect them to be lower than on the training data.
+
+```{r}
+fit
+```
+
+Here is the error estimate for the testing data:
+
+```{r}
+pred<-predict(fit,sbTest[,-53])
+predRight<-pred==sbTest$classe
+(1-(sum(predRight)/nrow(sbTest)))*100
+table(pred,sbTest$classe)
+```
+
+The error rate on the testig data is ~0.63% which is roughly the same as the training data (~0.63%). This error rate is very low, which suggests we are probably overfitting the training data. We expected a value higher than the one for the training data, but it does not seem to have a difference between the two error rates.
+
+Unfortunately, I did not have the time to continue further exploration (and fine-tuning) and may be look for a model with a more realistic error rate.
