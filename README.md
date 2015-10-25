@@ -1,1 +1,1 @@
-# machine-learning
+This is the repository for my personal submission for Coursera's Practical Machine Learning course project.
